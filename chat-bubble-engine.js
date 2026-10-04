@@ -1,8 +1,6 @@
-(function () {
-"use strict";
-/*! chat-bubble-engine v1.0.0 | MIT | vanilla JS, zero dependencies */
+/*! chat-bubble-engine v__VERSION__ | MIT | vanilla JS, zero dependencies */
 
-const version = "1.0.0";
+const version = "__VERSION__";
 
 const FALLBACK_FONT = "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
 
@@ -80,6 +78,7 @@ const ENGINE_DEFAULTS = {
   letterSpacing: "normal",
   bubbleColor: "#121723",
   borderColor: "#1F293D",
+  borderWidth: 1, // px
   nameColor: "#FFFFFF",
   textColor: "#E5E7EB",
   subTextColor: "#9CA3AF",
@@ -340,7 +339,8 @@ class ChatBubbleEngine {
   /* ---------------- bubble ---------------- */
   buildBubble(item, pos, measure) {
     const o = this.o;
-    const border = "1px solid " + o.borderColor;
+    const bw = Math.max(0, parseFloat(o.borderWidth) || 0);
+    const border = bw + "px solid " + o.borderColor;
     const bubble = h("div", {
       position: "relative",
       width: "100%",
@@ -408,7 +408,7 @@ class ChatBubbleEngine {
     if (o.showTail && pos !== "center" && !measure) {
       const tail = h("span", {
         position: "absolute",
-        bottom: "-6px",
+        bottom: -(5 + bw) + "px", // keeps the tail 5px past the outer edge for any border width
         width: "12px",
         height: "12px",
         boxSizing: "border-box",
@@ -460,7 +460,7 @@ class ChatBubbleEngine {
       height: "34px",
       boxSizing: "border-box",
       borderRadius: "50%",
-      border: "1px solid " + o.borderColor,
+      border: Math.max(0, parseFloat(o.borderWidth) || 0) + "px solid " + o.borderColor,
       background: o.bubbleColor,
       color: o.textColor,
       display: "flex",
@@ -922,7 +922,4 @@ function boot() {
   else run();
 }
 
-
-window.ChatBubbleEngine = ChatBubbleEngine;
-boot();
-})();
+export { ChatBubbleEngine, autoMount, readOptions, ENGINE_DEFAULTS as DEFAULTS, version };
