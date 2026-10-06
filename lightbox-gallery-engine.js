@@ -1,5 +1,5 @@
 /*! lightbox-gallery-engine v__VERSION__ | MIT | vanilla JS, zero dependencies */
-
+// hendzzz
 const version = "__VERSION__";
 
 // Both ends of each reveal use the SAME clip-path function, so the browser can interpolate.
@@ -56,6 +56,7 @@ const DEFAULTS = {
   modalOpacity: 0.92,
   showMetadata: true,
   showThumbnails: true,
+  thumbArrows: true, // lightbox thumbnails: show prev/next arrows when the strip overflows
   fontFamily: "Inter, system-ui, sans-serif",
   minHeight: 0, // px, applied to the host element (0 = none)
   static: false, // true = cards only, the lightbox cannot open
@@ -71,6 +72,9 @@ const CSS_TEXT = `
 .lbg-btn{display:grid;place-items:center;box-sizing:border-box;margin:0;width:42px;height:42px;border-radius:50%;border:1px solid rgba(255,255,255,.18);background:rgba(255,255,255,.07);color:#fff;cursor:pointer;padding:0;-webkit-appearance:none;appearance:none}
 .lbg-btn:hover{background:rgba(255,255,255,.16)}
 .lbg-btn[aria-pressed="true"]{background:var(--lbg-accent);color:#111;border-color:var(--lbg-accent)}
+.lbg-btn-sm{width:32px;height:32px;flex:0 0 auto}
+.lbg-btn[disabled]{opacity:.3;cursor:default;pointer-events:none}
+.lbg-strip{cursor:grab;user-select:none;-webkit-user-select:none}
 .lbg-thumb{flex:0 0 auto;box-sizing:border-box;margin:0;width:48px;height:48px;border-radius:10px;overflow:hidden;border:2px solid transparent;padding:0;background:none;cursor:pointer;opacity:.45;transition:opacity .2s}
 .lbg-thumb:hover{opacity:1}
 .lbg-thumb[aria-current="true"]{opacity:1;border-color:var(--lbg-accent)}
@@ -611,24 +615,108 @@ class LightboxGalleryEngine {
       display: "none",
     }, m.stage);
 
-    // thumbnails
+    // thumbnails: scrollable strip (mouse drag, wheel, touch) with optional arrows.
+    // Short strips stay centered; long strips scroll without cutting off the first items.
     m.thumbs = [];
+    m.strip = null;
+    m.thumbIdx = -1;
     if (o.showThumbnails && this.n > 1) {
-      const strip = h("div", { display: "flex", justifyContent: "center", gap: "10px", overflowX: "auto", padding: "6px" }, root);
-      strip.className = "lbg-noscroll";
+      const thumbRow = h("div", { display: "flex", alignItems: "center", gap: "8px", minWidth: "0" }, root);
+      const sPrev = iconButton("prev", "Scroll thumbnails left");
+      const sNext = iconButton("next", "Scroll thumbnails right");
+      sPrev.btn.classList.add("lbg-btn-sm");
+      sNext.btn.classList.add("lbg-btn-sm");
+      thumbRow.appendChild(sPrev.btn);
+      const strip = h("div", {
+        position: "relative",
+        flex: "1 1 0",
+        minWidth: "0",
+        display: "flex",
+        gap: "10px",
+        overflowX: "auto",
+        overflowY: "hidden",
+        padding: "6px",
+        touchAction: "pan-x",
+        overscrollBehaviorX: "contain",
+      }, thumbRow);
+      strip.className = "lbg-noscroll lbg-strip";
+      thumbRow.appendChild(sNext.btn);
+      m.strip = strip;
+
       this.items.forEach((it, i) => {
         const b = document.createElement("button");
         b.type = "button";
         b.className = "lbg-thumb";
         b.setAttribute("aria-label", "Show " + (it.title || "image " + (i + 1)));
+        // auto margins center the strip when it fits and collapse to 0 when it overflows
+        if (i === 0) b.style.marginLeft = "auto";
+        if (i === this.n - 1) b.style.marginRight = "auto";
         const im = h("img", { width: "100%", height: "100%", objectFit: "cover", display: "block", maxWidth: "none" }, b);
         im.src = it.src;
         im.alt = "";
         im.loading = "lazy";
+        im.draggable = false;
         b.addEventListener("click", () => this.swapTo(i));
         strip.appendChild(b);
         m.thumbs.push(b);
       });
+
+      // arrows: only visible when the strip actually overflows, disabled at the ends
+      const updateArrows = () => {
+        const max = strip.scrollWidth - strip.clientWidth;
+        const show = !!o.thumbArrows && max > 1;
+        sPrev.btn.style.display = show ? "" : "none";
+        sNext.btn.style.display = show ? "" : "none";
+        sPrev.btn.disabled = strip.scrollLeft <= 1;
+        sNext.btn.disabled = strip.scrollLeft >= max - 1;
+      };
+      const scrollStrip = (dir) =>
+        strip.scrollBy({
+          left: dir * Math.max(120, strip.clientWidth * 0.8),
+          behavior: this.reduced ? "auto" : "smooth",
+        });
+      sPrev.btn.addEventListener("click", () => scrollStrip(-1));
+      sNext.btn.addEventListener("click", () => scrollStrip(1));
+      strip.addEventListener("scroll", updateArrows, { passive: true });
+      if (typeof ResizeObserver !== "undefined") {
+        this.thumbRO = new ResizeObserver(updateArrows);
+        this.thumbRO.observe(strip);
+      }
+      updateArrows();
+
+      // mouse wheel: vertical wheel scrolls the strip sideways
+      strip.addEventListener("wheel", (e) => {
+        if (strip.scrollWidth <= strip.clientWidth) return;
+        if (Math.abs(e.deltaY) <= Math.abs(e.deltaX)) return;
+        strip.scrollLeft += e.deltaY;
+        e.preventDefault();
+      }, { passive: false });
+
+      // mouse drag (touch uses native scrolling); capture only after a small movement
+      // so a plain click on a thumbnail still works
+      let drag = null;
+      strip.addEventListener("pointerdown", (e) => {
+        e.stopPropagation(); // keep the lightbox swipe gesture out of the strip
+        if (e.pointerType !== "mouse" || e.button !== 0) return;
+        drag = { x: e.clientX, left: strip.scrollLeft, moved: false, id: e.pointerId };
+      });
+      strip.addEventListener("pointermove", (e) => {
+        if (!drag) return;
+        const dx = e.clientX - drag.x;
+        if (!drag.moved && Math.abs(dx) > 5) {
+          drag.moved = true;
+          try { strip.setPointerCapture(drag.id); } catch (err) { /* ignore */ }
+          strip.style.cursor = "grabbing";
+        }
+        if (drag.moved) strip.scrollLeft = drag.left - dx;
+      });
+      const endDrag = () => {
+        drag = null;
+        strip.style.cursor = "";
+      };
+      strip.addEventListener("pointerup", endDrag);
+      strip.addEventListener("pointercancel", endDrag);
+      strip.addEventListener("lostpointercapture", endDrag);
     }
 
     // events
@@ -733,8 +821,19 @@ class LightboxGalleryEngine {
         });
     }
 
-    // thumbnails
+    // thumbnails: highlight the active one and scroll it into the middle of the strip
     m.thumbs.forEach((b, i) => b.setAttribute("aria-current", String(i === this.index)));
+    if (m.strip && m.thumbIdx !== this.index) {
+      const first = m.thumbIdx < 0;
+      m.thumbIdx = this.index;
+      const b = m.thumbs[this.index];
+      if (b) {
+        m.strip.scrollTo({
+          left: b.offsetLeft - (m.strip.clientWidth - b.offsetWidth) / 2,
+          behavior: first || this.reduced ? "auto" : "smooth",
+        });
+      }
+    }
 
     this.syncBar();
     this.restartSlideshow();
@@ -806,6 +905,8 @@ class LightboxGalleryEngine {
     this.onKey = null;
     if (this.stageRO) this.stageRO.disconnect();
     this.stageRO = null;
+    if (this.thumbRO) this.thumbRO.disconnect();
+    this.thumbRO = null;
     if (this.m) {
       this.m.root.remove();
       document.body.style.overflow = this.prevOverflow || "";
