@@ -3,10 +3,12 @@
 const version = "__VERSION__";
 
 // Both ends of each reveal use the SAME clip-path function, so the browser can interpolate.
+// fade: true  = the image also fades in (opacity) during the reveal
+// fade: false = the image is always fully opaque, only the clip-path mask moves
 const CLIP = {
-  circle: { hidden: "circle(0% at 50% 50%)", shown: "circle(75% at 50% 50%)" },
-  inset: { hidden: "inset(45% 45% 45% 45% round 20px)", shown: "inset(0% 0% 0% 0% round 20px)" },
-  curtain: { hidden: "inset(50% 0% 50% 0%)", shown: "inset(0% 0% 0% 0%)" },
+  circle: { hidden: "circle(0% at 50% 50%)", shown: "circle(75% at 50% 50%)", fade: false },
+  inset: { hidden: "inset(50% 50% 50% 50% round 20px)", shown: "inset(0% 0% 0% 0% round 20px)", fade: false },
+  curtain: { hidden: "inset(50% 0% 50% 0%)", shown: "inset(0% 0% 0% 0%)", fade: true },
 };
 
 const ICONS = {
@@ -39,6 +41,7 @@ const DEFAULTS = {
   marqueeSpeed: 60,
   marqueeDirection: "left", // "left" | "right"
   pauseOnHover: true,
+  marqueeFade: true, // marquee: fade (gradient mask) at the left and right edges
   gap: 24,
   borderRadius: 16,
   reveal: "curtain", // "curtain" | "circle" | "inset"
@@ -297,7 +300,10 @@ class LightboxGalleryEngine {
     const fill = !(o.cardHeight > 0);
     const copies = n >= 6 ? 2 : 4;
     const dur = Math.max(5, ((copies / 2) * n * (o.cardWidth + o.gap)) / Math.max(10, o.marqueeSpeed));
-    const mask = "linear-gradient(90deg, transparent, #000 6%, #000 94%, transparent)";
+    // Edge fade is optional: no mask at all when marqueeFade is off
+    const mask = o.marqueeFade
+      ? "linear-gradient(90deg, transparent, #000 6%, #000 94%, transparent)"
+      : "";
     const wrap = h("div", {
       overflow: "hidden",
       flex: fill ? "1 1 0" : "0 0 auto",
@@ -697,16 +703,20 @@ class LightboxGalleryEngine {
     m.prev.style.display = this.n > 1 ? "" : "none";
     m.next.style.display = this.n > 1 ? "" : "none";
 
-    // reveal
+    // reveal: circle / inset stay fully opaque so the clip-path mask edge reads clearly;
+    // only curtain also fades the image in.
     const clip = CLIP[o.reveal] || CLIP.curtain;
     const dur = this.dur;
     m.stage.style.overflow = this.zoomed ? "hidden" : "visible";
     setStyles(m.img, {
       clipPath: this.shown ? clip.shown : clip.hidden,
-      opacity: this.shown ? "1" : "0.15",
+      opacity: this.shown || !clip.fade ? "1" : "0.15",
       transform: this.zoomed ? "scale(1.8)" : "scale(1)",
       cursor: this.zoomed ? "zoom-out" : "zoom-in",
-      transition: "clip-path " + dur + "ms cubic-bezier(.77,0,.175,1), opacity " + dur + "ms ease, transform .35s ease-out",
+      transition:
+        "clip-path " + dur + "ms cubic-bezier(.77,0,.175,1)" +
+        (clip.fade ? ", opacity " + dur + "ms ease" : "") +
+        ", transform .35s ease-out",
     });
 
     // metadata panel
