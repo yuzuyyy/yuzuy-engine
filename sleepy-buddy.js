@@ -574,7 +574,7 @@
             floaty: 0.05,
             hit: { radius: 1.3, y: 0 },
             defaults: {
-                color: '#ffcf9e',
+                color: '#0099FF',
                 color2: '#fff1dc',
                 color3: '#ff8aa8',
                 eye: '#2a1b1b',
